@@ -1,7 +1,9 @@
 from math import log10
 
+from .syntactic_unit import SyntacticUnit
 from .pagerank_weighted import pagerank_weighted_scipy as _pagerank
 from .preprocessing.textcleaner import clean_text_by_sentences as _clean_text_by_sentences
+from .preprocessing.textcleaner import filter_words
 from .commons import build_graph as _build_graph
 from .commons import remove_unreachable_nodes as _remove_unreachable_nodes
 
@@ -109,12 +111,27 @@ def _extract_most_important_sentences(sentences, ratio, words):
         return _get_sentences_with_word_count(sentences, words)
 
 
-def summarize(text, ratio=0.2, words=None, language="english", split=False, scores=False):
+def summarize(text,
+              ratio=0.2,
+              words=None,
+              language="english",
+              split=False,
+              scores=False,
+              user_query=None):
+
     if not isinstance(text, str):
         raise ValueError("Text parameter must be a Unicode object (str)!")
 
     # Gets a list of processed sentences.
     sentences = _clean_text_by_sentences(text, language)
+
+    # Process and append user's query
+    if user_query:
+        cleaned_user_query = filter_words([user_query])[0]
+        syntactic = SyntacticUnit(user_query, cleaned_user_query, tag=None)
+        syntactic.index = len(sentences)
+        syntactic.is_user_query = True
+        sentences.append(syntactic)
 
     # Creates the graph and calculates the similarity coefficient for every pair of nodes.
     graph = _build_graph([sentence.token for sentence in sentences])
@@ -132,6 +149,9 @@ def summarize(text, ratio=0.2, words=None, language="english", split=False, scor
 
     # Adds the summa scores to the sentence objects.
     _add_scores_to_sentences(sentences, pagerank_scores)
+
+    # Remove user's query
+    sentences = [s for s in sentences if not s.is_user_query]
 
     # Extracts the most important sentences with the selected criterion.
     extracted_sentences = _extract_most_important_sentences(sentences, ratio, words)
